@@ -1,0 +1,5 @@
+{
+  example_host_entry;
+  example_host_io;
+  example_host_console;
+};
