@@ -8,6 +8,16 @@
 dlink_list_head_t dlink_module_list_head = DLINK_LIST_HEAD_INITIALIZER;
 
 Result dlink_add_module(module_input_t input, dlink_module_t **out) {
+  char *name = NULL;
+  if (input.name != NULL) {
+    size_t len = strlen(input.name) + 1;
+    name = malloc(len);
+    if (name == NULL) {
+      return DLINK_ERR_OUT_OF_MEMORY;
+    }
+    memcpy(name, input.name, len);
+    input.name = name;
+  }
   dlink_module_t *mod = malloc(sizeof(*mod));
   if (mod == NULL) {
     return DLINK_ERR_OUT_OF_MEMORY;
@@ -18,6 +28,7 @@ Result dlink_add_module(module_input_t input, dlink_module_t **out) {
 
   module_list_node_t *node = malloc(sizeof(*node));
   if (node == NULL) {
+    free(name);
     free(mod);
     return DLINK_ERR_OUT_OF_MEMORY;
   }
@@ -192,6 +203,7 @@ Result dlink_destroy_module(dlink_module_t *mod) {
   if (mod->input.loader) {
     mod->input.loader->unload(&mod->input);
   }
+  free((void *)mod->input.name);
 
   dlink_list_foreach(&dlink_module_list_head, i) {
     module_list_node_t *node = dlink_list_entry(module_list_node_t, list, i);
