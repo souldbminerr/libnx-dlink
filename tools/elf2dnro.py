@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """elf2dnro - build a DNRO (Dynamic Nintendo Relocatable Object) from an ELF.
 Usage: elf2dnro.py <input.elf> <output.dnro>
 """
@@ -81,6 +81,30 @@ def main():
     if img[mod_off:mod_off + 4] != b"MOD0":
         fail("no MOD0 header at mod_offset %#x" % mod_off)
 
+    module_id = bytearray(32)
+    e_shoff, = struct.unpack_from("<Q", e, 0x28)
+    e_shentsize, e_shnum, e_shstrndx = struct.unpack_from("<HHH", e, 0x3A)
+    shstr_off = e_shoff + e_shstrndx * e_shentsize
+    shstr = e[struct.unpack_from("<Q", e, shstr_off + 24)[0]:]
+    for i in range(e_shnum):
+        o = e_shoff + i * e_shentsize
+        sh_name, sh_type, sh_flags, sh_addr, sh_off, sh_size = struct.unpack_from("<IIQQQQ", e, o)[:6]
+        if sh_type != 7:  # SHT_NOTE
+            continue
+        end = shstr.find(bytes([0]), sh_name)
+        if shstr[sh_name:end] != b".note.gnu.build-id":
+            continue
+        n_off = sh_off
+        while n_off + 12 <= sh_off + sh_size:
+            namesz, descsz, ntype = struct.unpack_from("<III", e, n_off)
+            name = e[n_off + 12:n_off + 12 + namesz].rstrip(bytes([0]))
+            desc = e[n_off + 12 + ((namesz + 3) & ~3):][:descsz]
+            if ntype == 3 and name == b"GNU" and descsz > 0:
+                module_id[:min(descsz, 32)] = desc[:32]
+                break
+            n_off += 12 + ((namesz + 3) & ~3) + ((descsz + 3) & ~3)
+        break
+
     hdr = bytearray(0x80)
     struct.pack_into("<I", hdr, 0x00, NRO_MAGIC)
     struct.pack_into("<I", hdr, 0x08, image_size)
@@ -90,6 +114,7 @@ def main():
     struct.pack_into("<II", hdr, 0x20, rw[0], rw_end - rw[0])
     struct.pack_into("<I", hdr, 0x28, bss_size)
     hdr[0x2C:0x30] = DNRO_TAG
+    hdr[0x40:0x60] = module_id
     img[0x10:0x90] = hdr
 
     with open(out_path, "wb") as f:

@@ -1,4 +1,4 @@
-﻿/* DNRO module loader via the ldr:ro service. NRO handling ported from
+/* DNRO module loader via the ldr:ro service. NRO handling ported from
  * libtransistor's ld/loader/nro_via_ldr_ro.c (ISC License, Copyright
  * (c) 2017 ReSwitched Team), using libnx's ldrRo* IPC wrappers.
  * Only loads DNRO images (elf2dnro output): stock elf2nro output does
@@ -98,6 +98,10 @@ static Result dlink_dnro_load(module_input_t *spec_out, void *nro_image,
     goto fail_loaded_nrr;
   }
 
+  ldrRoUnloadNrr((u64)nrr);
+  dlink_free_pages(nrr);
+  loader_data->nrr = NULL;
+
   loader_data->nro_image = nro_image;
   spec_out->base = (void *)nro_base;
   spec_out->loader = &dlink_loader_dnro;
@@ -122,12 +126,15 @@ fail_loader_data:
 static Result dlink_dnro_unload(module_input_t *spec) {
   dlink_dnro_data_t *loader_data = spec->loader_data;
   Result r = ldrRoUnloadNro((u64)spec->base);
-  Result r2 = ldrRoUnloadNrr((u64)loader_data->nrr);
-  if (R_SUCCEEDED(r)) {
-    r = r2;
+  if (loader_data->nrr != NULL) {
+    Result r2 = ldrRoUnloadNrr((u64)loader_data->nrr);
+    if (R_SUCCEEDED(r)) {
+      r = r2;
+    }
+    dlink_free_pages(loader_data->nrr);
+    loader_data->nrr = NULL;
   }
   ldrRoExit();
-  dlink_free_pages(loader_data->nrr);
   dlink_free_pages(loader_data->nro_image);
   dlink_free_pages(loader_data->bss);
   free(loader_data);
