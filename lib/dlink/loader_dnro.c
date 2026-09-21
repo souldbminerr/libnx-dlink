@@ -1,9 +1,3 @@
-/* DNRO module loader via the ldr:ro service. NRO handling ported from
- * libtransistor's ld/loader/nro_via_ldr_ro.c (ISC License, Copyright
- * (c) 2017 ReSwitched Team), using libnx's ldrRo* IPC wrappers.
- * Only loads DNRO images (elf2dnro output): stock elf2nro output does
- * not guarantee the metadata below (truncated RELR sizes, trailing
- * asset bytes inside the mapped range). */
 #include "dlink_internal.h"
 
 #include <switch/services/ro.h>
