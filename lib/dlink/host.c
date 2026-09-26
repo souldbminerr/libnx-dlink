@@ -1,4 +1,4 @@
-﻿#include "dlink_internal.h"
+#include "dlink_internal.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -56,18 +56,12 @@ static Result host_rebuild_hash(host_module_t *hm) {
   return DLINK_OK;
 }
 
-Result dlink_provide(const char *name, void *addr) {
-  if (name == NULL || addr == NULL) {
-    return DLINK_ERR_INVALID_MODULE_TYPE;
-  }
-  host_module_t *hm = &s_provided;
-  if (!hm->present) {
-    host_module_init(hm);
-  }
-
-  size_t namelen = strlen(name) + 1;
-  if (hm->sym_count + 1 >= hm->sym_cap) {
+static Result host_reserve(host_module_t *hm, size_t extra_syms, size_t extra_str) {
+  if (hm->sym_count + extra_syms >= hm->sym_cap) {
     size_t ncap = hm->sym_cap ? hm->sym_cap * 2 : 16;
+    while (hm->sym_count + extra_syms >= ncap) {
+      ncap *= 2;
+    }
     Elf64_Sym *nsym = realloc(hm->symtab, ncap * sizeof(Elf64_Sym));
     if (nsym == NULL) {
       return DLINK_ERR_OUT_OF_MEMORY;
@@ -76,9 +70,9 @@ Result dlink_provide(const char *name, void *addr) {
     hm->sym_cap = ncap;
     hm->mod.symtab = nsym;
   }
-  if (hm->str_len + namelen >= hm->str_cap) {
+  if (hm->str_len + extra_str >= hm->str_cap) {
     size_t ncap = hm->str_cap ? hm->str_cap * 2 : 256;
-    while (hm->str_len + namelen >= ncap) {
+    while (hm->str_len + extra_str >= ncap) {
       ncap *= 2;
     }
     char *nstr = realloc(hm->strtab, ncap);
@@ -96,6 +90,11 @@ Result dlink_provide(const char *name, void *addr) {
     hm->str_len = 1;
     hm->sym_count = 0;
   }
+  return DLINK_OK;
+}
+
+static void host_append(host_module_t *hm, const char *name, void *addr) {
+  size_t namelen = strlen(name) + 1;
   hm->sym_count++;
   Elf64_Sym *sym = &hm->symtab[hm->sym_count];
   sym->st_name = (uint32_t)hm->str_len;
@@ -106,7 +105,53 @@ Result dlink_provide(const char *name, void *addr) {
   sym->st_size = 0;
   memcpy(hm->strtab + hm->str_len, name, namelen);
   hm->str_len += namelen;
+}
+Result dlink_provide(const char *name, void *addr) {
+  if (name == NULL || addr == NULL) {
+    return DLINK_ERR_INVALID_MODULE_TYPE;
+  }
+  host_module_t *hm = &s_provided;
+  if (!hm->present) {
+    host_module_init(hm);
+  }
 
+  Result r = host_reserve(hm, 1, strlen(name) + 1);
+  if (R_FAILED(r)) {
+    return r;
+  }
+  host_append(hm, name, addr);
+  return host_rebuild_hash(hm);
+}
+
+Result dlink_provide_bulk(const char **names, void **addrs, size_t count) {
+  host_module_t *hm = &s_provided;
+  if (!hm->present) {
+    host_module_init(hm);
+  }
+
+  size_t total_syms = 0;
+  size_t total_str = 0;
+  for (size_t i = 0; i < count; i++) {
+    if (names[i] == NULL || addrs[i] == NULL) {
+      continue;
+    }
+    total_syms++;
+    total_str += strlen(names[i]) + 1;
+  }
+  if (total_syms == 0) {
+    return DLINK_OK;
+  }
+
+  Result r = host_reserve(hm, total_syms, total_str);
+  if (R_FAILED(r)) {
+    return r;
+  }
+  for (size_t i = 0; i < count; i++) {
+    if (names[i] == NULL || addrs[i] == NULL) {
+      continue;
+    }
+    host_append(hm, names[i], addrs[i]);
+  }
   return host_rebuild_hash(hm);
 }
 

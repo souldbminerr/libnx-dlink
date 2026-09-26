@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file dlink.h
  * @brief Header libnx-dlink, a dynamic linker library for libnx.
  * @authors Souldbminer and ReSwitched
@@ -118,6 +118,15 @@ Result dlink_relocate_basic(void *module_base);
  *        Needed when the host does not export a full dynamic symbol table.
  */
 Result dlink_provide(const char *name, void *addr);
+
+/**
+ * @brief Exposes many host symbols at once. Same per-symbol semantics as
+ *        dlink_provide(), but the lookup hash is rebuilt once for the whole
+ *        batch instead of once per symbol: exposing thousands of symbols
+ *        one by one costs O(n^2) rebuilds, this costs O(n). NULL entries
+ *        are skipped. An empty batch is a no-op returning DLINK_OK.
+ */
+Result dlink_provide_bulk(const char **names, void **addrs, size_t count);
 
 /* Shorthand: registers sym under its own name. Taking the address also
  * forces the object into the host link, so a later dlink_register_host()
